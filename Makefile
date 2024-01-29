@@ -1,9 +1,9 @@
 # This is the Makefile helping you submit the labs.
 # Just create 6.5840/api.key with your API key in it,
 # and submit your lab with the following command:
-#     $ make [lab1|lab2a|lab2b|lab2c|lab2d|lab3a|lab3b|lab4a|lab4b]
+#     $ make [lab1|lab2|lab3a|lab3b|lab3c|lab3d|lab4a|lab4b|lab5a|lab5b]
 
-LABS=" lab1 lab2a lab2b lab2c lab2d lab3a lab3b lab4a lab4b "
+LABS=" lab1 lab2 lab3a lab3b lab3c lab3d lab4a lab4b lab5a lab5b "
 
 %: check-%
 	@echo "Preparing $@-handin.tar.gz"

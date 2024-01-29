@@ -15,20 +15,24 @@ REFERENCE_FILES=(
     src/main/mrworker.go
 
     # lab 2
+    src/kvsrv/test_test.go
+    src/kvsrv/config.go
+
+    # lab 3
     src/raft/persister.go
     src/raft/test_test.go
     src/raft/config.go
     src/labrpc/labrpc.go
 
-    # lab 3
+    # lab 4
     src/kvraft/test_test.go
     src/kvraft/config.go
 
-    # lab 4a
+    # lab 5a
     src/shardctrler/test_test.go
     src/shardctrler/config.go
 
-    # lab 4b
+    # lab 5b
     src/shardkv/test_test.go
     src/shardkv/config.go
 )
@@ -55,10 +59,11 @@ main() {
 
     case $labnum in
         "lab1") check_lab1;;
-        "lab2a"|"lab2b"|"lab2c"|"lab2d") check_lab2;;
-        "lab3a"|"lab3b") check_lab3;;
-        "lab4a") check_lab4a;;
-        "lab4b") check_lab4b;;
+        "lab2") check_lab2;;
+        "lab3a"|"lab3b"|"lab3c"|"lab3d") check_lab3;;
+        "lab4a"|"lab4b") check_lab4;;
+        "lab5a") check_lab5a;;
+        "lab5b") check_lab5b;;
         *) die "unknown lab: $labnum";;
     esac
 
@@ -81,21 +86,26 @@ check_lab1() {
 }
 
 check_lab2() {
-    check_cmd cd src/raft
+    check_cmd cd src/kvsrv
     check_cmd go test -c
 }
 
 check_lab3() {
+    check_cmd cd src/raft
+    check_cmd go test -c
+}
+
+check_lab4() {
     check_cmd cd src/kvraft
     check_cmd go test -c
 }
 
-check_lab4a() {
+check_lab5a() {
     check_cmd cd src/shardctrler
     check_cmd go test -c
 }
 
-check_lab4b() {
+check_lab5b() {
     check_cmd cd src/shardkv
     check_cmd go test -c
     # also check other labs/parts
