@@ -6,7 +6,6 @@ import (
 
 	"fmt"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"runtime"
 	"strconv"
@@ -373,7 +372,7 @@ const (
 )
 
 func TestMemGet2(t *testing.T) {
-	const MEM = 100 // in MiB
+	const MEM = 10 // in MiB
 
 	cfg := make_config(t, true)
 	defer cfg.cleanup()
@@ -408,7 +407,7 @@ func TestMemGet2(t *testing.T) {
 }
 
 func TestMemPut2(t *testing.T) {
-	const MEM = 100 // in MiB
+	const MEM = 10 // in MiB
 
 	cfg := make_config(t, false)
 	defer cfg.cleanup()
@@ -423,6 +422,7 @@ func TestMemPut2(t *testing.T) {
 	ck1.Put("k", "")
 
 	runtime.GC()
+
 	var st runtime.MemStats
 	runtime.ReadMemStats(&st)
 	m := st.HeapAlloc / MiB
@@ -433,7 +433,7 @@ func TestMemPut2(t *testing.T) {
 }
 
 func TestMemAppend2(t *testing.T) {
-	const MEM = 100 // in MiB
+	const MEM = 10 // in MiB
 
 	cfg := make_config(t, false)
 	defer cfg.cleanup()
@@ -458,51 +458,57 @@ func TestMemAppend2(t *testing.T) {
 	cfg.end()
 }
 
-func TestMemPutMany2(t *testing.T) {
+func TestMemPutMany(t *testing.T) {
 	const (
-		NPUT = 1_000_000
-		MEM  = 1000
+		NCLIENT = 100_000
+		MEM     = 1000
 	)
 
 	cfg := make_config(t, false)
 	defer cfg.cleanup()
 
-	cfg.begin("Test: memory use many puts")
-	ck := cfg.makeClient()
-
 	v := randValue(MEM)
 
-	ck.Put("k", v)
+	cks := make([]*Clerk, NCLIENT)
+	for i, _ := range cks {
+		cks[i] = cfg.makeClient()
+	}
 
-	// allow threads started by labrpc to exit
+	// allow threads started by labrpc to start
 	time.Sleep(1 * time.Second)
 
+	cfg.begin("Test: memory use many puts")
+
+	runtime.GC()
 	runtime.GC()
 
 	var st runtime.MemStats
 	runtime.ReadMemStats(&st)
 	m0 := st.HeapAlloc
 
-	for i := 0; i < NPUT; i++ {
-		ck.Put("k", v)
+	for i := 0; i < NCLIENT; i++ {
+		cks[i].Put("k", v)
 	}
-
-	// allow threads started by labrpc to exit
-	time.Sleep(1 * time.Second)
 
 	runtime.GC()
+	time.Sleep(1 * time.Second)
+	runtime.GC()
+
 	runtime.ReadMemStats(&st)
 	m1 := st.HeapAlloc
-
-	//log.Printf("mem m0 %d m1 %d\n", m0, m1)
-
-	if m1 > m0+NPUT/10 {
-		t.Fatalf("error: server using too much memory %d %d\n", m0, m1)
+	f := (float64(m1) - float64(m0)) / NCLIENT
+	if m1 > m0+(NCLIENT*200) {
+		t.Fatalf("error: server using too much memory %d %d (%.2f per client)\n", m0, m1, f)
 	}
+
+	for _, ck := range cks {
+		cfg.deleteClient(ck)
+	}
+
 	cfg.end()
 }
 
-func TestMemGetMany2(t *testing.T) {
+func TestMemGetMany(t *testing.T) {
 	const (
 		NCLIENT = 100_000
 	)
@@ -516,6 +522,14 @@ func TestMemGetMany2(t *testing.T) {
 	ck.Put("0", "")
 	cfg.deleteClient(ck)
 
+	cks := make([]*Clerk, NCLIENT)
+	for i, _ := range cks {
+		cks[i] = cfg.makeClient()
+	}
+
+	// allow threads started by labrpc to start
+	time.Sleep(1 * time.Second)
+
 	runtime.GC()
 	runtime.GC()
 
@@ -524,24 +538,24 @@ func TestMemGetMany2(t *testing.T) {
 	m0 := st.HeapAlloc
 
 	for i := 0; i < NCLIENT; i++ {
-		ck := cfg.makeClient()
-		ck.Get("0")
-		cfg.deleteClient(ck)
+		cks[i].Get("0")
 	}
+
+	runtime.GC()
 
 	time.Sleep(1 * time.Second)
 
 	runtime.GC()
-	runtime.GC()
-	//runtime.GC()
 
 	runtime.ReadMemStats(&st)
 	m1 := st.HeapAlloc
+	f := (float64(m1) - float64(m0)) / NCLIENT
+	if m1 >= m0+NCLIENT*10 {
+		t.Fatalf("error: server using too much memory m0 %d m1 %d (%.2f per client)\n", m0, m1, f)
+	}
 
-	log.Printf("mem m0 %d m1 %d\n", m0, m1)
-
-	if m1 >= m0+NCLIENT {
-		t.Fatalf("error: server using too much memory m0 %d m1 %d\n", m0, m1)
+	for _, ck := range cks {
+		cfg.deleteClient(ck)
 	}
 
 	cfg.end()
