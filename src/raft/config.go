@@ -551,7 +551,7 @@ func (cfg *config) wait(index int, n int, startTerm int) interface{} {
 // if retry==true, may submit the command multiple
 // times, in case a leader fails just after Start().
 // if retry==false, calls Start() only once, in order
-// to simplify the early Lab 2B tests.
+// to simplify the early Lab 3B tests.
 func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 	t0 := time.Now()
 	starts := 0
@@ -605,7 +605,7 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 
 // start a Test.
 // print the Test message.
-// e.g. cfg.begin("Test (2B): RPC counts aren't too high")
+// e.g. cfg.begin("Test (3B): RPC counts aren't too high")
 func (cfg *config) begin(description string) {
 	fmt.Printf("%s ...\n", description)
 	cfg.t0 = time.Now()
