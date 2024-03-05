@@ -43,7 +43,7 @@ func (ck *Clerk) Get(key string) string {
 // shared by Put and Append.
 //
 // you can send an RPC with code like this:
-// ok := ck.servers[i].Call("KVServer.PutAppend", &args, &reply)
+// ok := ck.servers[i].Call("KVServer."+op, &args, &reply)
 //
 // the types of args and reply (including whether they are pointers)
 // must match the declared types of the RPC handler function's
