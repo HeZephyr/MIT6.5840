@@ -110,11 +110,11 @@ check_lab5b() {
     check_cmd go test -c
     # also check other labs/parts
     cd "$tmpdir"
-    check_lab4a
+    check_lab5a
+    cd "$tmpdir"
+    check_lab4
     cd "$tmpdir"
     check_lab3
-    cd "$tmpdir"
-    check_lab2
 }
 
 check_cmd() {
