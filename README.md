@@ -10,7 +10,9 @@ Labs of MIT 6.5840(6.824): Distributed Systems.
 - [x] No data competition, a big lock ensures safety
 - [x] Pass lab test
 - [ ] Communicate over TCP/IP and read/write files using a shared file system
+
 [Tutorial](https://blog.csdn.net/hzf0701/article/details/138867824?spm=1001.2014.3001.5501)
+
 ```shell
 ❯ bash test-mr.sh
 *** Starting wc test
