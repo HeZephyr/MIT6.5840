@@ -227,10 +227,10 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 type AppendEntriesArgs struct {
 	Term         int        // leader's term
 	LeaderId     int        // so follower can redirect clients
-	prevLogIndex int        // index of log entry immediately preceding new ones
-	prevLogTerm  int        // term of prevLogIndex entry
-	entries      []LogEntry // log entries to store (empty for heartbeat; may send more than one for efficiency)
-	leaderCommit int        // leader's commitIndex
+	PrevLogIndex int        // index of log entry immediately preceding new ones
+	PrevLogTerm  int        // term of prevLogIndex entry
+	Entries      []LogEntry // log entries to store (empty for heartbeat; may send more than one for efficiency)
+	LeaderCommit int        // leader's commitIndex
 }
 
 type AppendEntriesReply struct {
@@ -410,7 +410,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 		nextIndex:      make([]int, len(peers)),
 		matchIndex:     make([]int, len(peers)),
 		heartbeatTimer: time.NewTimer(StableHeartbeatTimeout()),
-		electionTimer:  time.NewTimer(time.Duration(ElectionTimeout) * time.Millisecond),
+		electionTimer:  time.NewTimer(RandomElectionTimeOut()),
 		state:          Follower,
 	}
 
