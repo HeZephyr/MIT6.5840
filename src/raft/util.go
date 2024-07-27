@@ -40,16 +40,20 @@ func (state NodeState) String() string {
 }
 
 // confirm concurrency safety
-type lockRand struct {
+type lockedRand struct {
 	mu   sync.Mutex
 	rand *rand.Rand
 }
 
-func (r *lockRand) Intn(n int) int {
+func (r *lockedRand) Intn(n int) int {
 	// avoid many goroutines to access the random number generator at the same time
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.rand.Intn(n)
+}
+
+var globalRand = &lockedRand{
+	rand: rand.New(rand.NewSource(time.Now().UnixNano())),
 }
 
 const (
@@ -62,5 +66,21 @@ func StableHeartbeatTimeout() time.Duration {
 }
 
 func RandomElectionTimeOut() time.Duration {
-	return time.Duration(ElectionTimeout+rand.Intn(ElectionTimeout)) * time.Millisecond
+	return time.Duration(ElectionTimeout+globalRand.Intn(ElectionTimeout)) * time.Millisecond
+}
+
+func (args RequestVoteArgs) String() string {
+	return fmt.Sprintf("{Term:%v,CandidateId:%v,LastLogIdx:%v,LastLogTerm:%v}", args.Term, args.CandidateId, args.LastLogIdx, args.LastLogTerm)
+}
+
+func (args RequestVoteReply) String() string {
+	return fmt.Sprintf("{Term:%v,VoteGranted:%v}", args.Term, args.VoteGranted)
+}
+
+func (args AppendEntriesArgs) String() string {
+	return fmt.Sprintf("{Term:%v,LeaderId:%v,PrevLogIdx:%v,PrevLogTerm:%v,LeaderCommit:%v,Entries:%v}", args.Term, args.LeaderId, args.PrevLogIndex, args.PrevLogTerm, args.LeaderCommit, args.Entries)
+}
+
+func (args AppendEntriesReply) String() string {
+	return fmt.Sprintf("{Term:%v,Success:%v}", args.Term, args.Success)
 }
