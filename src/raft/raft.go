@@ -18,6 +18,8 @@ package raft
 //
 
 import (
+	"6.5840/labgob"
+	"bytes"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -119,6 +121,15 @@ func (rf *Raft) changeState(newState NodeState) {
 	}
 }
 
+func (rf *Raft) encodeState() []byte {
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.votedFor)
+	e.Encode(rf.log)
+	return w.Bytes()
+}
+
 // save Raft's persistent state to stable storage,
 // where it can later be retrieved after a crash and restart.
 // see paper's Figure 2 for a description of what should be persistent.
@@ -135,6 +146,7 @@ func (rf *Raft) persist() {
 	// e.Encode(rf.yyy)
 	// raftstate := w.Bytes()
 	// rf.persister.Save(raftstate, nil)
+	rf.persister.SaveRaftState(rf.encodeState())
 }
 
 // restore previously persisted state.
@@ -155,6 +167,18 @@ func (rf *Raft) readPersist(data []byte) {
 	//   rf.xxx = xxx
 	//   rf.yyy = yyy
 	// }
+	if data == nil || len(data) == 0 {
+		return
+	}
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var currentTerm, votedFor int
+	var log []LogEntry
+	if d.Decode(&currentTerm) != nil || d.Decode(&votedFor) != nil || d.Decode(&log) != nil {
+		DPrintf("{Node %v} fails to decode state from persister", rf.me)
+	}
+	rf.currentTerm, rf.votedFor, rf.log = currentTerm, votedFor, log
+	rf.lastApplied, rf.commitIndex = rf.getFirstLog().Index, rf.getFirstLog().Index
 }
 
 // the service says it has created a snapshot that has
@@ -197,6 +221,7 @@ func (rf *Raft) handleAppendEntriesReply(peer int, args *AppendEntriesArgs, repl
 			if reply.Term > rf.currentTerm {
 				rf.changeState(Follower)
 				rf.currentTerm, rf.votedFor = reply.Term, -1
+				rf.persist()
 			} else if reply.Term == rf.currentTerm {
 				// decrease nextIndex and retry
 				rf.nextIndex[peer] = reply.ConflictIndex
@@ -256,6 +281,7 @@ func (rf *Raft) startElection() {
 	// vote for itself
 	grantedVotes := 1
 	rf.votedFor = rf.me
+	rf.persist()
 	for peer := range rf.peers {
 		if peer == rf.me {
 			continue
@@ -282,6 +308,7 @@ func (rf *Raft) startElection() {
 					DPrintf("{Node %v} receives outdated term %v from {Node %v} in term %v", rf.me, reply.Term, peer, rf.currentTerm)
 					rf.changeState(Follower)
 					rf.currentTerm, rf.votedFor = reply.Term, -1
+					rf.persist()
 				}
 			}
 		}(peer)
@@ -304,6 +331,7 @@ func (rf *Raft) appendNewEntry(command interface{}) LogEntry {
 		Command: command,
 	}
 	rf.log = append(rf.log, newLog)
+	rf.persist()
 	rf.matchIndex[rf.me], rf.nextIndex[rf.me] = newLog.Index, newLog.Index+1
 	return newLog
 }
