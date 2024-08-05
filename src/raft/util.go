@@ -9,7 +9,7 @@ import (
 )
 
 // Debugging
-const Debug = false
+const Debug = true
 
 func DPrintf(format string, a ...interface{}) {
 	if Debug {
@@ -70,7 +70,7 @@ func RandomElectionTimeOut() time.Duration {
 }
 
 func (args RequestVoteArgs) String() string {
-	return fmt.Sprintf("{Term:%v,CandidateId:%v,LastLogIdx:%v,LastLogTerm:%v}", args.Term, args.CandidateId, args.LastLogIdx, args.LastLogTerm)
+	return fmt.Sprintf("{Term:%v,CandidateId:%v,LastLogIdx:%v,LastLogTerm:%v}", args.Term, args.CandidateId, args.LastLogIndex, args.LastLogTerm)
 }
 
 func (args RequestVoteReply) String() string {
@@ -83,4 +83,18 @@ func (args AppendEntriesArgs) String() string {
 
 func (args AppendEntriesReply) String() string {
 	return fmt.Sprintf("{Term:%v,Success:%v}", args.Term, args.Success)
+}
+
+func Min(x, y int) int {
+	if x > y {
+		return y
+	}
+	return x
+}
+
+func Max(x, y int) int {
+	if x < y {
+		return y
+	}
+	return x
 }

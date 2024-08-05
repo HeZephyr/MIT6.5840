@@ -4,10 +4,10 @@ package raft
 // field names must start with capital letters!
 type RequestVoteArgs struct {
 	// Your data here (3A, 3B).
-	Term        int // candidate's term
-	CandidateId int // candidate requesting vote
-	LastLogIdx  int // index of candidate's last log entry
-	LastLogTerm int // term of candidate's last log entry
+	Term         int // candidate's term
+	CandidateId  int // candidate requesting vote
+	LastLogIndex int // index of candidate's last log entry
+	LastLogTerm  int // term of candidate's last log entry
 }
 
 // example RequestVote RPC reply structure.
@@ -34,6 +34,12 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.changeState(Follower)
 		rf.currentTerm, rf.votedFor = args.Term, -1
 	}
+
+	if !rf.isLogUpToDate(args.LastLogTerm, args.LastLogIndex) {
+		reply.Term, reply.VoteGranted = rf.currentTerm, false
+		return
+	}
+
 	rf.votedFor = args.CandidateId
 	rf.electionTimer.Reset(RandomElectionTimeOut())
 	reply.Term, reply.VoteGranted = rf.currentTerm, true
@@ -81,8 +87,10 @@ type AppendEntriesArgs struct {
 }
 
 type AppendEntriesReply struct {
-	Term    int  // currentTerm, for leader to update itself
-	Success bool // true if follower contained entry matching prevLogIndex and prevLogTerm
+	Term          int  // currentTerm, for leader to update itself
+	Success       bool // true if follower contained entry matching prevLogIndex and prevLogTerm
+	ConflictTerm  int  // term of the conflicting entry
+	ConflictIndex int  // first index it stores for that term
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
@@ -102,6 +110,38 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 	rf.changeState(Follower)
 	rf.electionTimer.Reset(RandomElectionTimeOut())
+
+	if args.PrevLogIndex < rf.getFirstLog().Index {
+		// indicate the follower's log is inconsistent with the leader's
+		reply.Term, reply.Success = rf.currentTerm, false
+		return
+	}
+
+	if !rf.isLogMatch(args.PrevLogTerm, args.PrevLogIndex) {
+		reply.Term, reply.Success = rf.currentTerm, false
+		lastIndex := rf.getLastLog().Index
+		if lastIndex < args.PrevLogIndex {
+			reply.ConflictTerm, reply.ConflictIndex = -1, lastIndex+1
+		} else {
+			firstIndex := rf.getFirstLog().Index
+			reply.ConflictTerm = rf.log[args.PrevLogIndex-firstIndex].Term
+			index := args.PrevLogIndex - 1
+			for index >= firstIndex && rf.log[index-firstIndex].Term == reply.ConflictTerm {
+				index--
+			}
+			reply.ConflictIndex = index
+		}
+		return
+	}
+
+	firstIndex := rf.getFirstLog().Index
+	for index, entry := range args.Entries {
+		if entry.Index-firstIndex >= len(rf.log) || rf.log[entry.Index-firstIndex].Term != entry.Term {
+			rf.log = append(rf.log[:entry.Index-firstIndex], args.Entries[index:]...)
+			break
+		}
+	}
+	rf.advanceCommitIndexForFollower(args.LeaderCommit)
 	reply.Term, reply.Success = rf.currentTerm, true
 }
 
