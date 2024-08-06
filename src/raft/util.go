@@ -98,3 +98,13 @@ func Max(x, y int) int {
 	}
 	return x
 }
+
+func shrinkEntriesArray(entries []LogEntry) []LogEntry {
+	const lenMultiple = 2
+	if len(entries)*lenMultiple < cap(entries) {
+		newEntries := make([]LogEntry, len(entries))
+		copy(newEntries, entries)
+		return newEntries
+	}
+	return entries
+}
