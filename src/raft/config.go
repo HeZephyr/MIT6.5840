@@ -133,7 +133,7 @@ func (cfg *config) crash1(i int) {
 		raftlog := cfg.saved[i].ReadRaftState()
 		snapshot := cfg.saved[i].ReadSnapshot()
 		cfg.saved[i] = &Persister{}
-		cfg.saved[i].Save(raftlog, snapshot)
+		cfg.saved[i].SaveStateAndSnapshot(raftlog, snapshot)
 	}
 }
 

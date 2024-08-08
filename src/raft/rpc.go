@@ -36,6 +36,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if args.Term > rf.currentTerm {
 		rf.ChangeState(Follower)
 		rf.currentTerm, rf.votedFor = args.Term, -1
+		rf.persist()
 	}
 
 	// if candidate's log is not up-to-date, reject the vote(§5.4)
@@ -45,6 +46,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	}
 
 	rf.votedFor = args.CandidateId
+	rf.persist()
 	rf.electionTimer.Reset(RandomElectionTimeout())
 	reply.Term, reply.VoteGranted = rf.currentTerm, true
 }
@@ -99,6 +101,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	// indicate the peer is the leader
 	if args.Term > rf.currentTerm {
 		rf.currentTerm, rf.votedFor = args.Term, -1
+		rf.persist()
 	}
 
 	rf.ChangeState(Follower)
@@ -136,6 +139,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		// find the junction of the existing log and the appended log.
 		if entry.Index-firstLogIndex >= len(rf.logs) || rf.logs[entry.Index-firstLogIndex].Term != entry.Term {
 			rf.logs = append(rf.logs[:entry.Index-firstLogIndex], args.Entries[index:]...)
+			rf.persist()
 			break
 		}
 	}
