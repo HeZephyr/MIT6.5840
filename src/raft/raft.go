@@ -18,6 +18,8 @@ package raft
 //
 
 import (
+	"6.5840/labgob"
+	"bytes"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -82,15 +84,17 @@ func (rf *Raft) GetState() (int, bool) {
 	return rf.currentTerm, rf.state == Leader
 }
 
+func (rf *Raft) encodeState() []byte {
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.votedFor)
+	e.Encode(rf.logs)
+	return w.Bytes()
+}
+
 func (rf *Raft) persist() {
-	// Your code here (3C).
-	// Example:
-	// w := new(bytes.Buffer)
-	// e := labgob.NewEncoder(w)
-	// e.Encode(rf.xxx)
-	// e.Encode(rf.yyy)
-	// raftstate := w.Bytes()
-	// rf.persister.Save(raftstate, nil)
+	rf.persister.SaveStateAndSnapshot(rf.encodeState(), nil)
 }
 
 // restore previously persisted state.
@@ -98,19 +102,15 @@ func (rf *Raft) readPersist(data []byte) {
 	if data == nil || len(data) < 1 { // bootstrap without any state?
 		return
 	}
-	// Your code here (3C).
-	// Example:
-	// r := bytes.NewBuffer(data)
-	// d := labgob.NewDecoder(r)
-	// var xxx
-	// var yyy
-	// if d.Decode(&xxx) != nil ||
-	//    d.Decode(&yyy) != nil {
-	//   error...
-	// } else {
-	//   rf.xxx = xxx
-	//   rf.yyy = yyy
-	// }
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var currentTerm, votedFor int
+	var logs []LogEntry
+	if d.Decode(&currentTerm) != nil || d.Decode(&votedFor) != nil || d.Decode(&logs) != nil {
+		DPrintf("{Node %v} fails to decode persisted state", rf.me)
+	}
+	rf.currentTerm, rf.votedFor, rf.logs = currentTerm, votedFor, logs
+	rf.lastApplied, rf.commitIndex = rf.getFirstLog().Index, rf.getFirstLog().Index
 }
 
 // the service says it has created a snapshot that has
@@ -135,6 +135,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		Command: command,
 		Index:   newLogIndex,
 	})
+	rf.persist()
 	rf.matchIndex[rf.me], rf.nextIndex[rf.me] = newLogIndex, newLogIndex+1
 	DPrintf("{Node %v} starts agreement on a new log entry with command %v in term %v", rf.me, command, rf.currentTerm)
 	// then broadcast to all peers to append log entry
@@ -155,6 +156,7 @@ func (rf *Raft) killed() bool {
 
 func (rf *Raft) StartElection() {
 	rf.votedFor = rf.me
+	rf.persist()
 	args := rf.genRequestVoteArgs()
 	grantedVotes := 1
 	DPrintf("{Node %v} starts election with RequestVoteArgs %v", rf.me, args)
@@ -180,6 +182,7 @@ func (rf *Raft) StartElection() {
 					} else if reply.Term > rf.currentTerm {
 						rf.ChangeState(Follower)
 						rf.currentTerm, rf.votedFor = reply.Term, -1
+						rf.persist()
 					}
 				}
 			}
@@ -245,6 +248,7 @@ func (rf *Raft) replicateOnceRound(peer int) {
 					// indicate current server is not the leader
 					rf.ChangeState(Follower)
 					rf.currentTerm, rf.votedFor = reply.Term, -1
+					rf.persist()
 				} else if reply.Term == rf.currentTerm {
 					// decrease nextIndex and retry
 					rf.nextIndex[peer] = reply.ConflictIndex
@@ -297,6 +301,7 @@ func (rf *Raft) ticker() {
 			rf.mu.Lock()
 			rf.ChangeState(Candidate)
 			rf.currentTerm += 1
+			rf.persist()
 			// start election
 			rf.StartElection()
 			rf.electionTimer.Reset(RandomElectionTimeout()) // reset election timer in case of split vote
