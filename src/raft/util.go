@@ -9,7 +9,7 @@ import (
 )
 
 // Debugging
-const Debug = false
+const Debug = true
 
 func DPrintf(format string, a ...interface{}) {
 	if Debug {
@@ -44,6 +44,8 @@ func StableHeartbeatTimeout() time.Duration {
 }
 
 type ApplyMsg struct {
+	// CommandTerm is not necessary because it is already applied to the state machine
+	// since the application layer usually only cares about the order and content of logs
 	CommandValid bool
 	Command      interface{}
 	CommandIndex int
@@ -76,7 +78,7 @@ func (state NodeState) String() string {
 }
 
 func (args RequestVoteArgs) String() string {
-	return fmt.Sprintf("{Term:%v, CandidateId:%v}", args.Term, args.CandidateId)
+	return fmt.Sprintf("{Term:%v, CandidateId:%v, LastLogIndex:%v, LastLogTerm:%v}", args.Term, args.CandidateId, args.LastLogIndex, args.LastLogTerm)
 }
 
 func (reply RequestVoteReply) String() string {
@@ -84,11 +86,11 @@ func (reply RequestVoteReply) String() string {
 }
 
 func (args AppendEntriesArgs) String() string {
-	return fmt.Sprintf("{Term:%v, LeaderId:%v", args.Term, args.LeaderId)
+	return fmt.Sprintf("{Term:%v, LeaderId:%v, PrevLogIndex:%v, PrevLogTerm:%v, LeaderCommit:%v, Entries:%v}", args.Term, args.LeaderId, args.PrevLogIndex, args.PrevLogTerm, args.LeaderCommit, args.Entries)
 }
 
 func (reply AppendEntriesReply) String() string {
-	return fmt.Sprintf("{Term:%v, Success:%v}", reply.Term, reply.Success)
+	return fmt.Sprintf("{Term:%v, Success:%v, ConflictIndex:%v, ConflictTerm:%v}", reply.Term, reply.Success, reply.ConflictIndex, reply.ConflictTerm)
 }
 
 type LogEntry struct {
@@ -103,4 +105,18 @@ func (rf *Raft) getLastLog() LogEntry {
 
 func (rf *Raft) getFirstLog() LogEntry {
 	return rf.logs[0]
+}
+
+func Min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func Max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
