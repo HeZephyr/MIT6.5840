@@ -174,13 +174,14 @@ type InstallSnapshotReply struct {
 	Term int
 }
 
-func (rf *Raft) genInstallSnapshotArgs(snapshot []byte) *InstallSnapshotArgs {
+func (rf *Raft) genInstallSnapshotArgs() *InstallSnapshotArgs {
+	firstLog := rf.getFirstLog()
 	args := &InstallSnapshotArgs{
 		Term:              rf.currentTerm,
 		LeaderId:          rf.me,
-		LastIncludedIndex: rf.getFirstLog().Index,
-		LastIncludedTerm:  rf.getFirstLog().Term,
-		Data:              snapshot,
+		LastIncludedIndex: firstLog.Index,
+		LastIncludedTerm:  firstLog.Term,
+		Data:              rf.persister.ReadSnapshot(),
 	}
 	return args
 }
@@ -208,6 +209,7 @@ func (rf *Raft) InstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapsho
 	if args.LastIncludedIndex <= rf.commitIndex {
 		return
 	}
+
 	go func() {
 		rf.applyCh <- ApplyMsg{
 			SnapshotValid: true,
