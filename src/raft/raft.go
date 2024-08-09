@@ -297,7 +297,6 @@ func (rf *Raft) ticker() {
 	for rf.killed() == false {
 		select {
 		case <-rf.electionTimer.C:
-			// start election
 			rf.mu.Lock()
 			rf.ChangeState(Candidate)
 			rf.currentTerm += 1
@@ -307,7 +306,6 @@ func (rf *Raft) ticker() {
 			rf.electionTimer.Reset(RandomElectionTimeout()) // reset election timer in case of split vote
 			rf.mu.Unlock()
 		case <-rf.heartbeatTimer.C:
-			// send heartbeat
 			rf.mu.Lock()
 			if rf.state == Leader {
 				// should send heartbeat
