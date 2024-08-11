@@ -1,22 +1,5 @@
 package raft
 
-//
-// this is an outline of the API that raft must expose to
-// the service (or tester). see comments below for
-// each of these functions for more details.
-//
-// rf = Make(...)
-//   create a new Raft server.
-// rf.Start(command interface{}) (index, term, isleader)
-//   start agreement on a new log entry
-// rf.GetState() (term, isLeader)
-//   ask a Raft for its current term, and whether it thinks it is leader
-// ApplyMsg
-//   each time a new entry is committed to the log, each Raft peer
-//   should send an ApplyMsg to the service (or tester)
-//   in the same server.
-//
-
 import (
 	"6.5840/labgob"
 	"bytes"
@@ -118,8 +101,41 @@ func (rf *Raft) readPersist(data []byte) {
 // service no longer needs the log through (and including)
 // that index. Raft should now trim its log as much as possible.
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
-	// Your code here (3D).
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	snapshotIndex := rf.getFirstLog().Index
+	if index <= snapshotIndex || index > rf.getLastLog().Index {
+		DPrintf("{Node %v} rejects replacing log with snapshotIndex %v as current snapshotIndex %v is larger in term %v", rf.me, index, snapshotIndex, rf.currentTerm)
+		return
+	}
+	// remove log entries up to index
+	rf.logs = rf.logs[index-snapshotIndex:]
+	rf.logs[0].Command = nil
+	rf.persister.SaveStateAndSnapshot(rf.encodeState(), snapshot)
+	DPrintf("{Node %v}'s state is {state %v,term %v,commitIndex %v,lastApplied %v,firstLog %v,lastLog %v} after accepting the snapshot with index %v", rf.me, rf.state, rf.currentTerm, rf.commitIndex, rf.lastApplied, rf.getFirstLog(), rf.getLastLog(), index)
+}
 
+func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	// outdated snapshot
+	if lastIncludedIndex <= rf.commitIndex {
+		DPrintf("{Node %v} rejects outdated snapshot with lastIncludeIndex %v as current commitIndex %v is larger in term %v", rf.me, lastIncludedIndex, rf.commitIndex, rf.currentTerm)
+		return false
+	}
+	// need dummy entry at index 0
+	if lastIncludedIndex > rf.getLastLog().Index {
+		rf.logs = make([]LogEntry, 1)
+	} else {
+		rf.logs = rf.logs[lastIncludedIndex-rf.getFirstLog().Index:]
+		rf.logs[0].Command = nil
+	}
+	rf.logs[0].Term, rf.logs[0].Index = lastIncludedTerm, lastIncludedIndex
+	rf.commitIndex, rf.lastApplied = lastIncludedIndex, lastIncludedIndex
+	rf.persister.SaveStateAndSnapshot(rf.encodeState(), snapshot)
+
+	DPrintf("{Node %v}'s state is {state %v,term %v,commitIndex %v,lastApplied %v,firstLog %v,lastLog %v} after accepting the snapshot which lastIncludedTerm is %v, lastIncludedIndex is %v", rf.me, rf.state, rf.currentTerm, rf.commitIndex, rf.lastApplied, rf.getFirstLog(), rf.getLastLog(), lastIncludedTerm, lastIncludedIndex)
+	return true
 }
 
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
@@ -237,40 +253,63 @@ func (rf *Raft) replicateOnceRound(peer int) {
 		return
 	}
 	prevLogIndex := rf.nextIndex[peer] - 1
-	args := rf.genAppendEntriesArgs(prevLogIndex)
-	rf.mu.RUnlock()
-	reply := new(AppendEntriesReply)
-	if rf.sendAppendEntries(peer, args, reply) {
-		rf.mu.Lock()
-		if args.Term == rf.currentTerm && rf.state == Leader {
-			if !reply.Success {
+	if prevLogIndex < rf.getFirstLog().Index {
+		// only send InstallSnapshot RPC
+		args := rf.genInstallSnapshotArgs()
+		rf.mu.RUnlock()
+		reply := new(InstallSnapshotReply)
+		if rf.sendInstallSnapshot(peer, args, reply) {
+			rf.mu.Lock()
+			if rf.state == Leader && rf.currentTerm == args.Term {
 				if reply.Term > rf.currentTerm {
-					// indicate current server is not the leader
 					rf.ChangeState(Follower)
 					rf.currentTerm, rf.votedFor = reply.Term, -1
 					rf.persist()
-				} else if reply.Term == rf.currentTerm {
-					// decrease nextIndex and retry
-					rf.nextIndex[peer] = reply.ConflictIndex
-					// TODO: optimize the nextIndex finding, maybe use binary search
-					if reply.ConflictTerm != -1 {
-						firstLogIndex := rf.getFirstLog().Index
-						for index := args.PrevLogIndex - 1; index >= firstLogIndex; index-- {
-							if rf.logs[index-firstLogIndex].Term == reply.ConflictTerm {
-								rf.nextIndex[peer] = index
-								break
+				} else {
+					rf.nextIndex[peer] = args.LastIncludedIndex + 1
+					rf.matchIndex[peer] = args.LastIncludedIndex
+				}
+			}
+			rf.mu.Unlock()
+			DPrintf("{Node %v} sends InstallSnapshotArgs %v to {Node %v} and receives InstallSnapshotReply %v", rf.me, args, peer, reply)
+		}
+	} else {
+		args := rf.genAppendEntriesArgs(prevLogIndex)
+		rf.mu.RUnlock()
+		reply := new(AppendEntriesReply)
+		if rf.sendAppendEntries(peer, args, reply) {
+			rf.mu.Lock()
+			if args.Term == rf.currentTerm && rf.state == Leader {
+				if !reply.Success {
+					if reply.Term > rf.currentTerm {
+						// indicate current server is not the leader
+						rf.ChangeState(Follower)
+						rf.currentTerm, rf.votedFor = reply.Term, -1
+						rf.persist()
+					} else if reply.Term == rf.currentTerm {
+						// decrease nextIndex and retry
+						rf.nextIndex[peer] = reply.ConflictIndex
+						// TODO: optimize the nextIndex finding, maybe use binary search
+						if reply.ConflictTerm != -1 {
+							firstLogIndex := rf.getFirstLog().Index
+							for index := args.PrevLogIndex - 1; index >= firstLogIndex; index-- {
+								if rf.logs[index-firstLogIndex].Term == reply.ConflictTerm {
+									rf.nextIndex[peer] = index
+									break
+								}
 							}
 						}
 					}
+				} else {
+					rf.matchIndex[peer] = args.PrevLogIndex + len(args.Entries)
+					rf.nextIndex[peer] = rf.matchIndex[peer] + 1
+					// advance commitIndex if possible
+					rf.advanceCommitIndexForLeader()
 				}
-			} else {
-				rf.matchIndex[peer] = args.PrevLogIndex + len(args.Entries)
-				rf.nextIndex[peer] = rf.matchIndex[peer] + 1
-				// advance commitIndex if possible
-				rf.advanceCommitIndexForLeader()
 			}
+			rf.mu.Unlock()
+			DPrintf("{Node %v} sends AppendEntriesArgs %v to {Node %v} and receives AppendEntriesReply %v", rf.me, args, peer, reply)
 		}
-		rf.mu.Unlock()
 	}
 }
 

@@ -93,6 +93,14 @@ func (reply AppendEntriesReply) String() string {
 	return fmt.Sprintf("{Term:%v, Success:%v, ConflictIndex:%v, ConflictTerm:%v}", reply.Term, reply.Success, reply.ConflictIndex, reply.ConflictTerm)
 }
 
+func (args InstallSnapshotArgs) String() string {
+	return fmt.Sprintf("{Term:%v, LeaderId:%v, LastIncludedIndex:%v, LastIncludedTerm:%v, Data:%v}", args.Term, args.LeaderId, args.LastIncludedIndex, args.LastIncludedTerm, len(args.Data))
+}
+
+func (reply InstallSnapshotReply) String() string {
+	return fmt.Sprintf("{Term:%v}", reply.Term)
+}
+
 type LogEntry struct {
 	Command interface{}
 	Term    int
