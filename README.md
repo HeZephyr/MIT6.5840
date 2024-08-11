@@ -70,3 +70,15 @@ PASS
 ok      6.5840/kvsrv    75.329s
 ```
 
+## Lab3 Raft
+[Experimental Requirements](https://pdos.csail.mit.edu/6.824/labs/lab-raft.html)
+
+- [x] Complete the basic requirements for Raft
+- [x] No data competition, a big lock ensures safety
+- [x] Pass the strict test of the lab
+- [x] Strictly follow experimental requirements and paper presentation
+- [ ] Optimize the search for NextIndex
+
+[Tutorial](https://blog.csdn.net/hzf0701/article/details/141108894)
+
+![image-20240811175403947](https://raw.githubusercontent.com/HeZephyr/NewPicGoLibrary/main/img/image-20240811175403947.png)

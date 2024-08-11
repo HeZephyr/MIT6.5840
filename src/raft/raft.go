@@ -109,7 +109,7 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 		return
 	}
 	// remove log entries up to index
-	rf.logs = rf.logs[index-snapshotIndex:]
+	rf.logs = shrinkEntries(rf.logs[index-snapshotIndex:])
 	rf.logs[0].Command = nil
 	rf.persister.SaveStateAndSnapshot(rf.encodeState(), snapshot)
 	DPrintf("{Node %v}'s state is {state %v,term %v,commitIndex %v,lastApplied %v,firstLog %v,lastLog %v} after accepting the snapshot with index %v", rf.me, rf.state, rf.currentTerm, rf.commitIndex, rf.lastApplied, rf.getFirstLog(), rf.getLastLog(), index)
@@ -127,7 +127,7 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 	if lastIncludedIndex > rf.getLastLog().Index {
 		rf.logs = make([]LogEntry, 1)
 	} else {
-		rf.logs = rf.logs[lastIncludedIndex-rf.getFirstLog().Index:]
+		rf.logs = shrinkEntries(rf.logs[lastIncludedIndex-rf.getFirstLog().Index:])
 		rf.logs[0].Command = nil
 	}
 	rf.logs[0].Term, rf.logs[0].Index = lastIncludedTerm, lastIncludedIndex
@@ -381,7 +381,7 @@ func (rf *Raft) applier() {
 		rf.mu.Lock()
 		DPrintf("{Node %v} applies log entries from index %v to %v in term %v", rf.me, lastApplied+1, commitIndex, rf.currentTerm)
 		// use commitIndex rather than rf.commitIndex because rf.commitIndex may change during the Unlock() and Lock()
-		rf.lastApplied = commitIndex
+		rf.lastApplied = Max(rf.lastApplied, commitIndex)
 		rf.mu.Unlock()
 	}
 }
@@ -421,7 +421,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 			go rf.replicator(peer)
 		}
 	}
-
 	// start ticker goroutine to start elections
 	go rf.ticker()
 	// start apply goroutine to apply log entries to state machine
