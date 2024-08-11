@@ -421,7 +421,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 			go rf.replicator(peer)
 		}
 	}
-
 	// start ticker goroutine to start elections
 	go rf.ticker()
 	// start apply goroutine to apply log entries to state machine
