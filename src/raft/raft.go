@@ -112,10 +112,10 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	rf.logs = rf.logs[index-snapshotIndex:]
 	rf.logs[0].Command = nil
 	rf.persister.SaveStateAndSnapshot(rf.encodeState(), snapshot)
-	DPrintf("{Node %v} trims log entries up to index %v in term %v", rf.me, index, rf.currentTerm)
+	DPrintf("{Node %v}'s state is {state %v,term %v,commitIndex %v,lastApplied %v,firstLog %v,lastLog %v} after accepting the snapshot with index %v", rf.me, rf.state, rf.currentTerm, rf.commitIndex, rf.lastApplied, rf.getFirstLog(), rf.getLastLog(), index)
 }
 
-func (rf *Raft) isSnapshotValid(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
+func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	// outdated snapshot

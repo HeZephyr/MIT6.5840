@@ -221,7 +221,7 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 		err_msg := ""
 		if m.SnapshotValid {
 			cfg.mu.Lock()
-			if rf.isSnapshotValid(m.SnapshotTerm, m.SnapshotIndex, m.Snapshot) {
+			if rf.CondInstallSnapshot(m.SnapshotTerm, m.SnapshotIndex, m.Snapshot) {
 				err_msg = cfg.ingestSnap(i, m.Snapshot, m.SnapshotIndex)
 			}
 			cfg.mu.Unlock()
