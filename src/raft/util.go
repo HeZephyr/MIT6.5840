@@ -128,3 +128,17 @@ func Max(a, b int) int {
 	}
 	return b
 }
+
+// shrinkEntriesArray discards the underlying array used by the entries slice
+// if most of it isn't being used. This avoids holding references to a bunch of
+// potentially large entries that aren't needed anymore. Simply clearing the
+// entries wouldn't be safe because clients might still be using them.
+func shrinkEntries(entries []LogEntry) []LogEntry {
+	const lenMultiple = 2
+	if cap(entries) > len(entries)*lenMultiple {
+		newEntries := make([]LogEntry, len(entries))
+		copy(newEntries, entries)
+		return newEntries
+	}
+	return entries
+}

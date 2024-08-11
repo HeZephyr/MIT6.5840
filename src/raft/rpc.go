@@ -138,7 +138,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	for index, entry := range args.Entries {
 		// find the junction of the existing log and the appended log.
 		if entry.Index-firstLogIndex >= len(rf.logs) || rf.logs[entry.Index-firstLogIndex].Term != entry.Term {
-			rf.logs = append(rf.logs[:entry.Index-firstLogIndex], args.Entries[index:]...)
+			rf.logs = shrinkEntries(append(rf.logs[:entry.Index-firstLogIndex], args.Entries[index:]...))
 			rf.persist()
 			break
 		}
