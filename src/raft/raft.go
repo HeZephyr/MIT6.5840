@@ -100,6 +100,10 @@ func (rf *Raft) GetState() (int, bool) {
 	return rf.currentTerm, rf.state == Leader
 }
 
+func (rf *Raft) GetId() int {
+	return rf.me
+}
+
 func (rf *Raft) changeState(newState NodeState) {
 	if rf.state == newState {
 		return
