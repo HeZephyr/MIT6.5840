@@ -4,6 +4,8 @@ import (
 	"6.5840/labgob"
 	"6.5840/labrpc"
 	"6.5840/raft"
+	"bytes"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -109,7 +111,19 @@ func (kv *KVServer) applier() {
 					ch <- response
 				}
 
+				if kv.needSnapshot() {
+					kv.takeSnapshot(message.CommandIndex)
+				}
 				kv.mu.Unlock()
+			} else if message.SnapshotValid {
+				kv.mu.Lock()
+				if kv.rf.CondInstallSnapshot(message.SnapshotTerm, message.SnapshotIndex, message.Snapshot) {
+					kv.restoreSnapshot(message.Snapshot)
+					kv.lastApplied = message.SnapshotIndex
+				}
+				kv.mu.Unlock()
+			} else {
+				panic(fmt.Sprintf("unexpected Message %v", message))
 			}
 		}
 	}
@@ -144,6 +158,32 @@ func (kv *KVServer) removeOutdatedNotifyChan(index int) {
 	delete(kv.notifyChannels, index)
 }
 
+func (kv *KVServer) needSnapshot() bool {
+	return kv.maxraftstate != -1 && kv.rf.GetRaftStateSize() >= kv.maxraftstate
+}
+
+func (kv *KVServer) takeSnapshot(index int) {
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(kv.stateMachine)
+	e.Encode(kv.lastOperations)
+	kv.rf.Snapshot(index, w.Bytes())
+}
+
+func (kv *KVServer) restoreSnapshot(snapshot []byte) {
+	if snapshot == nil || len(snapshot) == 0 {
+		return
+	}
+	r := bytes.NewBuffer(snapshot)
+	d := labgob.NewDecoder(r)
+	var stateMachine MemoryKV
+	var lastOperations map[int64]OperationContext
+	if d.Decode(&stateMachine) != nil || d.Decode(&lastOperations) != nil {
+		DPrintf("{Node %v} restores snapshot failed", kv.rf.GetId())
+	}
+	kv.stateMachine, kv.lastOperations = &stateMachine, lastOperations
+}
+
 // servers[] contains the ports of the set of
 // servers that will cooperate via Raft to
 // form the fault-tolerant key/value service.
@@ -173,6 +213,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 		lastOperations: make(map[int64]OperationContext),
 		notifyChannels: make(map[int]chan *CommandResponse),
 	}
+	kv.restoreSnapshot(persister.ReadSnapshot())
 
 	go kv.applier()
 	return kv
