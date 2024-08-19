@@ -4,6 +4,8 @@ import (
 	"6.5840/labgob"
 	"6.5840/labrpc"
 	"6.5840/raft"
+	"bytes"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -110,6 +112,34 @@ func (kv *KVServer) applyLogToStateMachine(command Command) *CommandReply {
 	return reply
 }
 
+func (kv *KVServer) needSnapshot() bool {
+	return kv.maxraftstate != -1 && kv.rf.GetRaftStateSize() >= kv.maxraftstate
+}
+
+func (kv *KVServer) takeSnapshot(index int) {
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(kv.stateMachine)
+	e.Encode(kv.lastOperations)
+	data := w.Bytes()
+	kv.rf.Snapshot(index, data)
+}
+
+func (kv *KVServer) restoreStateFromSnapshot(snapshot []byte) {
+	if snapshot == nil || len(snapshot) < 1 {
+		return
+	}
+	r := bytes.NewBuffer(snapshot)
+	d := labgob.NewDecoder(r)
+	var stateMachine MemoryKV
+	var lastOperations map[int64]OperationContext
+	if d.Decode(&stateMachine) != nil || d.Decode(&lastOperations) != nil {
+		panic("Failed to restore state from snapshot")
+	}
+	kv.stateMachine = &stateMachine
+	kv.lastOperations = lastOperations
+}
+
 func (kv *KVServer) applier() {
 	for kv.killed() == false {
 		select {
@@ -144,7 +174,20 @@ func (kv *KVServer) applier() {
 					ch := kv.getNotifyCh(message.CommandIndex)
 					ch <- reply
 				}
+				if kv.needSnapshot() {
+					kv.takeSnapshot(message.CommandIndex)
+				}
+
 				kv.mu.Unlock()
+			} else if message.SnapshotValid {
+				kv.mu.Lock()
+				if kv.rf.CondInstallSnapshot(message.SnapshotTerm, message.SnapshotIndex, message.Snapshot) {
+					kv.restoreStateFromSnapshot(message.Snapshot)
+					kv.lastApplied = message.SnapshotIndex
+				}
+				kv.mu.Unlock()
+			} else {
+				panic(fmt.Sprintf("Invalid ApplyMsg %v", message))
 			}
 		}
 	}
@@ -179,6 +222,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 		lastOperations: make(map[int64]OperationContext),
 		notifyChs:      make(map[int]chan *CommandReply),
 	}
+	kv.restoreStateFromSnapshot(persister.ReadSnapshot())
 	go kv.applier()
 	return kv
 }
