@@ -82,3 +82,15 @@ ok      6.5840/kvsrv    75.329s
 [Tutorial](https://blog.csdn.net/hzf0701/article/details/141108894)
 
 ![image-20240811175403947](https://raw.githubusercontent.com/HeZephyr/NewPicGoLibrary/main/img/image-20240811175403947.png)
+
+## Lab4 Fault-tolerant Key/Value Service
+
+[Experimental Requirements](https://pdos.csail.mit.edu/6.824/labs/lab-kvraft.html)
+
+- [x] Integrate Raft with Key/Value Server
+- [x] Implement client request handlers (Get, Put, Append)
+- [x] Pass lab test including fault tolerance scenarios
+
+[Tutorial](https://blog.csdn.net/hzf0701/article/details/141727735)
+
+![image-20240820095009785](https://raw.githubusercontent.com/HeZephyr/NewPicGoLibrary/main/img/image-20240820095009785.png)
