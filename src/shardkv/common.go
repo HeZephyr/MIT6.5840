@@ -1,5 +1,10 @@
 package shardkv
 
+import (
+	"fmt"
+	"time"
+)
+
 //
 // Sharded key/value server.
 // Lots of replica groups, each running Raft.
@@ -10,35 +15,105 @@ package shardkv
 //
 
 const (
-	OK             = "OK"
-	ErrNoKey       = "ErrNoKey"
-	ErrWrongGroup  = "ErrWrongGroup"
-	ErrWrongLeader = "ErrWrongLeader"
+	ExecuteTimeout            = 500 * time.Millisecond
+	ConfigureMonitorTimeout   = 100 * time.Millisecond
+	MigrationMonitorTimeout   = 50 * time.Millisecond
+	GCMonitorTimeout          = 50 * time.Millisecond
+	EmptyEntryDetectorTimeout = 200 * time.Millisecond
 )
 
-type Err string
+type Err uint8
 
-// Put or Append
-type PutAppendArgs struct {
-	// You'll have to add definitions here.
-	Key   string
-	Value string
-	Op    string // "Put" or "Append"
-	// You'll have to add definitions here.
-	// Field names must start with capital letters,
-	// otherwise RPC will break.
+const (
+	OK Err = iota
+	ErrNoKey
+	ErrWrongGroup
+	ErrWrongLeader
+	ErrOutDated
+	ErrTimeout
+	ErrNotReady
+)
+
+func (err Err) String() string {
+	switch err {
+	case OK:
+		return "OK"
+	case ErrNoKey:
+		return "ErrNoKey"
+	case ErrWrongGroup:
+		return "ErrWrongGroup"
+	case ErrWrongLeader:
+		return "ErrWrongLeader"
+	case ErrOutDated:
+		return "ErrOutDated"
+	case ErrTimeout:
+		return "ErrTimeout"
+	case ErrNotReady:
+		return "ErrNotReady"
+	}
+	panic(fmt.Sprintf("unexpected error: %v", err))
 }
 
-type PutAppendReply struct {
-	Err Err
+type OpType uint8
+
+const (
+	Get OpType = iota
+	Put
+	Append
+)
+
+func (op OpType) String() string {
+	switch op {
+	case Get:
+		return "Get"
+	case Put:
+		return "Put"
+	case Append:
+		return "Append"
+	}
+	panic(fmt.Sprintf("unexpected operation: %d", op))
 }
 
-type GetArgs struct {
-	Key string
-	// You'll have to add definitions here.
+type CommandArgs struct {
+	Key       string
+	Value     string
+	Op        OpType
+	ClientId  int64
+	CommandId int64
 }
 
-type GetReply struct {
+func (args CommandArgs) String() string {
+	return fmt.Sprintf("{Key: %v, Value: %v, Op: %v, ClientId: %v, CommandId: %v}", args.Key, args.Value, args.Op, args.ClientId, args.CommandId)
+}
+
+type CommandReply struct {
 	Err   Err
 	Value string
+}
+
+func (reply CommandReply) String() string {
+	return fmt.Sprintf("{Err: %v, Value: %v}", reply.Err, reply.Value)
+}
+
+type ShardStatus uint8
+
+const (
+	Serving ShardStatus = iota
+	Pulling
+	BePulling
+	GCing
+)
+
+func (status ShardStatus) String() string {
+	switch status {
+	case Serving:
+		return "Serving"
+	case Pulling:
+		return "Pulling"
+	case BePulling:
+		return "BePulling"
+	case GCing:
+		return "GCing"
+	}
+	panic(fmt.Sprintf("unexpected ShardStatus %d", status))
 }
