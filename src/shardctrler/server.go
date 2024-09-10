@@ -151,7 +151,6 @@ func StartServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persister)
 	}
 	// start applier goroutine to apply committed logs to stateMachine
 	go sc.applier()
-
 	DPrintf("{ShardCtrler %v} has started", sc.rf.GetId())
 	return sc
 }

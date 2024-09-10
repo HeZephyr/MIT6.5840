@@ -412,6 +412,13 @@ func (rf *Raft) replicateOneRound(peer int) {
 	}
 }
 
+// used by upper layer to detect whether there are any logs in current term
+func (rf *Raft) HasLogInCurrentTerm() bool {
+	rf.mu.RLock()
+	defer rf.mu.RUnlock()
+	return rf.getLastLog().Term == rf.currentTerm
+}
+
 // the service using Raft (e.g. a k/v server) wants to start
 // agreement on the next command to be appended to Raft's log. if this
 // server isn't the leader, returns false. otherwise start the

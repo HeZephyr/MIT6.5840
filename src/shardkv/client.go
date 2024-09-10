@@ -63,6 +63,18 @@ func MakeClerk(ctrlers []*labrpc.ClientEnd, makeEnd func(string) *labrpc.ClientE
 	return ck
 }
 
+func (ck *Clerk) Get(key string) string {
+	return ck.Command(&CommandArgs{Key: key, Op: Get})
+}
+
+func (ck *Clerk) Put(key string, value string) {
+	ck.Command(&CommandArgs{Key: key, Value: value, Op: Put})
+}
+
+func (ck *Clerk) Append(key string, value string) {
+	ck.Command(&CommandArgs{Key: key, Value: value, Op: Append})
+}
+
 func (ck *Clerk) Command(args *CommandArgs) string {
 	args.ClientId, args.CommandId = ck.clientId, ck.commandId
 	for {
@@ -77,7 +89,7 @@ func (ck *Clerk) Command(args *CommandArgs) string {
 			for {
 				reply := new(CommandReply)
 				ok := ck.makeEnd(servers[newLeaderId]).Call("ShardKV.Command", args, reply)
-				if ok && reply.Err == OK || reply.Err == ErrNoKey {
+				if ok && (reply.Err == OK || reply.Err == ErrNoKey) {
 					ck.commandId++
 					return reply.Value
 				} else if ok && reply.Err == ErrWrongGroup {
@@ -92,6 +104,7 @@ func (ck *Clerk) Command(args *CommandArgs) string {
 			}
 		}
 		time.Sleep(100 * time.Millisecond)
+		// ask controller for the latest configuration.
 		ck.config = ck.sm.Query(-1)
 	}
 }
