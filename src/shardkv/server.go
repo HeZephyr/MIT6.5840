@@ -444,7 +444,7 @@ func (kv *ShardKV) gcAction() {
 			for _, server := range servers {
 				srv := kv.makeEnd(server)
 				var gcTaskReply ShardOperationReply
-				if srv.Call("ShardKV.DeleteShardsData", &gcTaskArgs, &gcTaskReply) && gcTaskReply.Err == OK {
+				if srv.Call("ShardKV.GetShardsData", &gcTaskArgs, &gcTaskReply) && gcTaskReply.Err == OK {
 					DPrintf("{Node %v}{Group %v} deletes shards %v in remote group successfully when currentConfigNum is %v", kv.rf.GetId(), kv.gid, shardIds, configNum)
 					kv.Execute(NewDeleteShardsCommand(&gcTaskArgs), new(CommandReply))
 				}

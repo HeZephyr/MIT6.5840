@@ -26,26 +26,28 @@ func (cf *MemoryConfigStateMachine) Join(groups map[int][]string) Err {
 	newConfig := Config{len(cf.Configs), lastConfig.Shards, deepCopy(lastConfig.Groups)}
 	// iterate over the list of GIDs to be added
 	for gid, servers := range groups {
-		// if the GID does not exist in the new configuration, add it
-		newServers := make([]string, len(servers))
-		copy(newServers, servers)
-		newConfig.Groups[gid] = newServers
+		// if the GID does not exist in the new configuration, add it. avoid overwriting the existing GID
+		if _, ok := newConfig.Groups[gid]; !ok {
+			newServers := make([]string, len(servers))
+			copy(newServers, servers)
+			newConfig.Groups[gid] = newServers
+		}
 	}
 	// convert the shard allocation of the new configuration object to the mapping of "GID -> Shard List"
-	s2g := Group2Shards(newConfig)
+	group2shards := Group2Shards(newConfig)
 	// load balancing is performed only when raft groups exist
 	for {
-		source, target := GetGIDWithMaximumShards(s2g), GetGIDWithMinimumShards(s2g)
-		if source != 0 && len(s2g[source])-len(s2g[target]) <= 1 {
+		source, target := GetGIDWithMaximumShards(group2shards), GetGIDWithMinimumShards(group2shards)
+		if source != 0 && len(group2shards[source])-len(group2shards[target]) <= 1 {
 			break
 		}
 		// move the source GID group's first shard to the target GID group
-		s2g[target] = append(s2g[target], s2g[source][0])
-		s2g[source] = s2g[source][1:]
+		group2shards[target] = append(group2shards[target], group2shards[source][0])
+		group2shards[source] = group2shards[source][1:]
 	}
 	var newShards [NShards]int
 	// assign the shards to the GID based on the mapping of "GID -> Shard List"
-	for gid, shards := range s2g {
+	for gid, shards := range group2shards {
 		for _, shard := range shards {
 			newShards[shard] = gid
 		}
@@ -61,7 +63,7 @@ func (cf *MemoryConfigStateMachine) Leave(gids []int) Err {
 	// create a new config based on the latest config
 	newConfig := Config{len(cf.Configs), lastConfig.Shards, deepCopy(lastConfig.Groups)}
 	// convert the shard allocation of the new configuration object to the mapping of "GID -> Shard List"
-	s2g := Group2Shards(newConfig)
+	group2shards := Group2Shards(newConfig)
 	// create a list to store the shards that are not assigned to any group
 	orphanShards := make([]int, 0)
 	// iterate over the list of GIDs to be removed
@@ -71,9 +73,9 @@ func (cf *MemoryConfigStateMachine) Leave(gids []int) Err {
 			delete(newConfig.Groups, gid)
 		}
 		// if the GID exists in the mapping of "GID -> Shard List", remove it and append the shards to the orphanShards list
-		if shards, ok := s2g[gid]; ok {
+		if shards, ok := group2shards[gid]; ok {
 			orphanShards = append(orphanShards, shards...)
-			delete(s2g, gid)
+			delete(group2shards, gid)
 		}
 	}
 	var newShards [NShards]int
@@ -81,10 +83,10 @@ func (cf *MemoryConfigStateMachine) Leave(gids []int) Err {
 	if len(newConfig.Groups) > 0 {
 		// assign the orphan shards to the GID with the minimum number of shards
 		for _, shard := range orphanShards {
-			target := GetGIDWithMinimumShards(s2g)
-			s2g[target] = append(s2g[target], shard)
+			target := GetGIDWithMinimumShards(group2shards)
+			group2shards[target] = append(group2shards[target], shard)
 		}
-		for gid, shards := range s2g {
+		for gid, shards := range group2shards {
 			for _, shard := range shards {
 				newShards[shard] = gid
 			}
@@ -95,6 +97,7 @@ func (cf *MemoryConfigStateMachine) Leave(gids []int) Err {
 	return OK
 }
 
+// Move moves the shard to the GID group
 func (cf *MemoryConfigStateMachine) Move(shard, gid int) Err {
 	// get the latest config
 	lastConfig := cf.Configs[len(cf.Configs)-1]
@@ -113,45 +116,49 @@ func (cf *MemoryConfigStateMachine) Query(num int) (Config, Err) {
 }
 
 func Group2Shards(config Config) map[int][]int {
-	s2g := make(map[int][]int)
+	group2shards := make(map[int][]int)
 	for gid := range config.Groups {
-		s2g[gid] = make([]int, 0)
+		group2shards[gid] = make([]int, 0)
 	}
 	for shard, gid := range config.Shards {
-		s2g[gid] = append(s2g[gid], shard)
+		group2shards[gid] = append(group2shards[gid], shard)
 	}
-	return s2g
+	return group2shards
 }
 
-func GetGIDWithMinimumShards(s2g map[int][]int) int {
+func GetGIDWithMinimumShards(group2shards map[int][]int) int {
 	var keys []int
-	for k := range s2g {
+	for k := range group2shards {
 		keys = append(keys, k)
 	}
 	sort.Ints(keys)
 	// find GID with minimum shards
 	index, minn := -1, NShards+1
 	for _, gid := range keys {
-		if gid != 0 && len(s2g[gid]) < minn {
-			index, minn = gid, len(s2g[gid])
+		if gid != 0 && len(group2shards[gid]) < minn {
+			index, minn = gid, len(group2shards[gid])
 		}
 	}
 	return index
 }
 
-func GetGIDWithMaximumShards(s2g map[int][]int) int {
-	if shards, ok := s2g[0]; ok && len(shards) > 0 {
+func GetGIDWithMaximumShards(group2shards map[int][]int) int {
+	// gid 0 indicates that the shard is assigned to the special group
+	// By prioritizing GID 0, we handle cases where shards are assigned to this special group.
+	if shards, ok := group2shards[0]; ok && len(shards) > 0 {
 		return 0
 	}
+	// create a slice to store the keys (GIDs) from the map.
 	var keys []int
-	for k := range s2g {
+	for k := range group2shards {
 		keys = append(keys, k)
 	}
+
 	sort.Ints(keys)
 	index, maxn := -1, -1
 	for _, gid := range keys {
-		if gid != 0 && len(s2g[gid]) > maxn {
-			index, maxn = gid, len(s2g[gid])
+		if len(group2shards[gid]) > maxn {
+			index, maxn = gid, len(group2shards[gid])
 		}
 	}
 	return index

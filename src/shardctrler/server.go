@@ -26,6 +26,7 @@ type ShardCtrler struct {
 // in Kill(), but it might be convenient to (for example)
 // turn off debug output from this instance.
 func (sc *ShardCtrler) Kill() {
+	DPrintf("{ShardCtrler %v} is killed", sc.rf.GetId())
 	atomic.StoreInt32(&sc.dead, 1)
 	sc.rf.Kill()
 }
@@ -73,10 +74,13 @@ func (sc *ShardCtrler) applyLogToStateMachine(command Command) *CommandReply {
 }
 
 func (sc *ShardCtrler) Command(args *CommandArgs, reply *CommandReply) {
+	defer DPrintf("{Node %v}'s processes command %v with reply %v", sc.rf.GetId(), args, reply)
 	sc.mu.RLock()
 	if args.Op != Query && sc.isDuplicateRequest(args.ClientId, args.CommandId) {
 		LastReply := sc.lastOperations[args.ClientId].LastReply
 		reply.Err, reply.Config = LastReply.Err, LastReply.Config
+		sc.mu.RUnlock()
+		return
 	}
 	sc.mu.RUnlock()
 	index, _, isLeader := sc.rf.Start(Command{args})
@@ -96,7 +100,7 @@ func (sc *ShardCtrler) Command(args *CommandArgs, reply *CommandReply) {
 	}
 	go func() {
 		sc.mu.Lock()
-		delete(sc.notifyChannels, index)
+		sc.removeOutdatedNotifyChan(index)
 		sc.mu.Unlock()
 	}()
 }
@@ -105,11 +109,13 @@ func (sc *ShardCtrler) applier() {
 	for sc.killed() == false {
 		select {
 		case applyMsg := <-sc.applyCh:
+			DPrintf("{ShardCtrler %v} tries to apply message %v", sc.rf.GetId(), applyMsg)
 			if applyMsg.CommandValid {
 				var reply *CommandReply
 				command := applyMsg.Command.(Command)
 				sc.mu.Lock()
 				if command.Op != Query && sc.isDuplicateRequest(command.ClientId, command.CommandId) {
+					DPrintf("{ShardCtrler %v} doesn't apply duplicated message %v to stateMachine because maxAppliedCommandId is %v for client %v", sc.rf.GetId(), applyMsg, sc.lastOperations[command.ClientId].MaxAppliedCommandId, command.ClientId)
 					reply = sc.lastOperations[command.ClientId].LastReply
 				} else {
 					reply = sc.applyLogToStateMachine(command)
