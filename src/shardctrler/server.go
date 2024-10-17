@@ -9,20 +9,29 @@ import "6.5840/labrpc"
 import "sync"
 import "6.5840/labgob"
 
+// ShardCtrler is the controller of the shard system
 type ShardCtrler struct {
-	mu      sync.RWMutex
-	rf      *raft.Raft
-	applyCh chan raft.ApplyMsg
+	mu      sync.RWMutex       // lock for the ShardCtrler to protect the shared data
+	rf      *raft.Raft         // the Raft instance to ensure the consistency of the log
+	applyCh chan raft.ApplyMsg // the channel to receive the applied log from the Raft instance
 
 	// Your data here.
-	dead           int32 // set by Kill()
-	stateMachine   ConfigStateMachine
-	lastOperations map[int64]OperationContext
-	notifyChans    map[int]chan *CommandReply
+	dead           int32                      // set by Kill(), to indicate the ShardCtrler instance is killed
+	stateMachine   ConfigStateMachine         // the state machine to store the configuration of the shard system
+	lastOperations map[int64]OperationContext // the last operation context to avoid duplicate request
+	notifyChans    map[int]chan *CommandReply // the notify channel to notify the client goroutine
 }
 
+// Command handles incoming commands.
+// If the command is not a Query and is a duplicate request,
+// it returns the previous reply.
+// Otherwise, it tries to start the command in the raft layer.
+// If the current server is not the leader, it returns an error.
+// If the command is successfully started, it waits for the result
+// or times out after a certain period.
 func (sc *ShardCtrler) Command(args *CommandArgs, reply *CommandReply) {
 	sc.mu.RLock()
+	// check if the command is a duplicate request(only for non-Query command)
 	if args.Op != Query && sc.isDuplicateRequest(args.ClientId, args.CommandId) {
 		LastReply := sc.lastOperations[args.ClientId].LastReply
 		reply.Config, reply.Err = LastReply.Config, LastReply.Err
@@ -30,12 +39,14 @@ func (sc *ShardCtrler) Command(args *CommandArgs, reply *CommandReply) {
 		return
 	}
 	sc.mu.RUnlock()
+	// try to start the command in the raft layer
 	index, _, isLeader := sc.rf.Start(Command{args})
 	if !isLeader {
 		reply.Err = ErrWrongLeader
 		return
 	}
 	sc.mu.Lock()
+	// get the notify channel to wait for the result
 	notifyChan := sc.getNotifyChan(index)
 	sc.mu.Unlock()
 	select {
@@ -46,16 +57,20 @@ func (sc *ShardCtrler) Command(args *CommandArgs, reply *CommandReply) {
 	}
 	go func() {
 		sc.mu.Lock()
+		// remove the outdated notify channel to reduce memory footprint
 		sc.removeOutdatedNotifyChan(index)
 		sc.mu.Unlock()
 	}()
 }
 
+// isDuplicateRequest checks if the given command from the client is a duplicate.
 func (sc *ShardCtrler) isDuplicateRequest(clientId int64, commandId int64) bool {
 	OperationContext, ok := sc.lastOperations[clientId]
 	return ok && commandId <= OperationContext.MaxAppliedCommandId
 }
 
+// getNotifyChan gets the notification channel for the given index.
+// If the channel doesn't exist, it creates one.
 func (sc *ShardCtrler) getNotifyChan(index int) chan *CommandReply {
 	notifyChan, ok := sc.notifyChans[index]
 	if !ok {
@@ -65,10 +80,12 @@ func (sc *ShardCtrler) getNotifyChan(index int) chan *CommandReply {
 	return notifyChan
 }
 
+// removeOutdatedNotifyChan removes the outdated notify channel for the given index.
 func (sc *ShardCtrler) removeOutdatedNotifyChan(index int) {
 	delete(sc.notifyChans, index)
 }
 
+// applier is the goroutine to apply the log to the state machine.
 func (sc *ShardCtrler) applier() {
 	for !sc.killed() {
 		select {
@@ -90,6 +107,7 @@ func (sc *ShardCtrler) applier() {
 					}
 				}
 
+				// just notify related channel for currentTerm's log when node is leader
 				if currentTerm, isLeader := sc.rf.GetState(); isLeader && message.CommandTerm == currentTerm {
 					notifyChan := sc.getNotifyChan(message.CommandIndex)
 					notifyChan <- reply
@@ -100,6 +118,7 @@ func (sc *ShardCtrler) applier() {
 	}
 }
 
+// applyLogToStateMachine applies the command to the state machine and returns the reply.
 func (sc *ShardCtrler) applyLogToStateMachine(command Command) *CommandReply {
 	reply := new(CommandReply)
 	switch command.Op {
@@ -125,11 +144,12 @@ func (sc *ShardCtrler) Kill() {
 	atomic.StoreInt32(&sc.dead, 1)
 }
 
+// killed checks if the ShardCtrler is killed.
 func (sc *ShardCtrler) killed() bool {
 	return atomic.LoadInt32(&sc.dead) == 1
 }
 
-// needed by shardkv tester
+// Raft returns the underlying raft instance, needed by shardkv tester
 func (sc *ShardCtrler) Raft() *raft.Raft {
 	return sc.rf
 }
