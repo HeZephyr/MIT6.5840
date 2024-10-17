@@ -1,5 +1,10 @@
 package shardctrler
 
+import (
+	"fmt"
+	"time"
+)
+
 //
 // Shard controller: assigns shards to replication groups.
 //
@@ -20,6 +25,8 @@ package shardctrler
 // The number of shards.
 const NShards = 10
 
+const ExecuteTimeout = 500 * time.Millisecond
+
 // A configuration -- an assignment of shards to groups.
 // Please don't change this.
 type Config struct {
@@ -28,46 +35,101 @@ type Config struct {
 	Groups map[int][]string // gid -> servers[]
 }
 
+func DefaultConfig() Config {
+	return Config{
+		Groups: make(map[int][]string),
+	}
+}
+
+func (cf Config) String() string {
+	return fmt.Sprintf("{Num:%v,Shards:%v,Groups:%v}", cf.Num, cf.Shards, cf.Groups)
+}
+
+type OpType uint8
+
 const (
-	OK = "OK"
+	Join OpType = iota
+	Leave
+	Move
+	Query
 )
 
-type Err string
-
-type JoinArgs struct {
-	Servers map[int][]string // new GID -> servers mappings
+func (op OpType) String() string {
+	switch op {
+	case Join:
+		return "Join"
+	case Leave:
+		return "Leave"
+	case Move:
+		return "Move"
+	case Query:
+		return "Query"
+	default:
+		panic(fmt.Sprintf("unknown operation type %d", op))
+	}
 }
 
-type JoinReply struct {
-	WrongLeader bool
-	Err         Err
+type Err uint8
+
+const (
+	OK Err = iota
+	ErrWrongLeader
+	ErrTimeout
+)
+
+func (e Err) String() string {
+	switch e {
+	case OK:
+		return "OK"
+	case ErrWrongLeader:
+		return "ErrWrongLeader"
+	case ErrTimeout:
+		return "ErrTimeout"
+	default:
+		panic(fmt.Sprintf("unknown error type %d", e))
+	}
 }
 
-type LeaveArgs struct {
-	GIDs []int
+type CommandArgs struct {
+	Servers   map[int][]string // for Join
+	GIDs      []int            // for Leave
+	Shard     int              // for Move
+	GID       int              // for Move
+	Num       int              // for Query
+	Op        OpType
+	ClientId  int64
+	CommandId int64
 }
 
-type LeaveReply struct {
-	WrongLeader bool
-	Err         Err
+func (args CommandArgs) String() string {
+	switch args.Op {
+	case Join:
+		return fmt.Sprintf("{Servers:%v,Op:%v,ClientId:%v,CommandId:%v}", args.Servers, args.Op, args.ClientId, args.CommandId)
+	case Leave:
+		return fmt.Sprintf("{GIDs:%v,Op:%v,ClientId:%v,CommandId:%v}", args.GIDs, args.Op, args.ClientId, args.CommandId)
+	case Move:
+		return fmt.Sprintf("{Shard:%v,GID:%v,Op:%v,ClientId:%v,CommandId:%v}", args.Shard, args.GID, args.Op, args.ClientId, args.CommandId)
+	case Query:
+		return fmt.Sprintf("{Num:%v,Op:%v,ClientId:%v,CommandId:%v}", args.Num, args.Op, args.ClientId, args.CommandId)
+	default:
+		panic(fmt.Sprintf("unknown operation type %d", args.Op))
+	}
 }
 
-type MoveArgs struct {
-	Shard int
-	GID   int
+type CommandReply struct {
+	Err    Err
+	Config Config
 }
 
-type MoveReply struct {
-	WrongLeader bool
-	Err         Err
+func (reply CommandReply) String() string {
+	return fmt.Sprintf("{Err:%v,Config:%v}", reply.Err, reply.Config)
 }
 
-type QueryArgs struct {
-	Num int // desired config number
+type OperationContext struct {
+	MaxAppliedCommandId int64
+	LastReply           *CommandReply
 }
 
-type QueryReply struct {
-	WrongLeader bool
-	Err         Err
-	Config      Config
+type Command struct {
+	*CommandArgs
 }
