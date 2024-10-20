@@ -327,6 +327,7 @@ func (kv *ShardKV) applyEmptyShards() *CommandReply {
 func (kv *ShardKV) updateShardStatus(nextConfig *shardctrler.Config) {
 	for shardID := 0; shardID < shardctrler.NShards; shardID++ {
 		// check if the shard's group changes from current to next configuration.
+		// The shard is not the responsibility of this gid, but the gid in the next configuration is responsible for this shard, so need to pull the shard.
 		if kv.currentConfig.Shards[shardID] != kv.gid && nextConfig.Shards[shardID] == kv.gid {
 			// Get the new group ID.
 			gid := kv.currentConfig.Shards[shardID]
@@ -336,6 +337,7 @@ func (kv *ShardKV) updateShardStatus(nextConfig *shardctrler.Config) {
 			}
 		}
 		// check if the shard's group changes from next to current configuration.
+		// The shard is the responsibility of this gid, but the gid in the next configuration is not responsible for this shard, so need to be pulled by other group.
 		if kv.currentConfig.Shards[shardID] == kv.gid && nextConfig.Shards[shardID] != kv.gid {
 			// Get the new group ID.
 			gid := nextConfig.Shards[shardID]
@@ -473,6 +475,7 @@ func (kv *ShardKV) migrationAction() {
 				pullTaskReply := new(ShardOperationReply)
 				srv := kv.makeEnd(server)
 				if srv.Call("ShardKV.GetShardsData", &pullTaskArgs, pullTaskReply) && pullTaskReply.Err == OK {
+					//Pulling data from these servers
 					DPrintf("{Node %v}{Group %v} gets a PullTaskReply %v and tries to commit it when currentConfigNum is %v", kv.rf.GetId(), kv.gid, pullTaskReply, configNum)
 					kv.Execute(NewInsertShardsCommand(pullTaskReply), new(CommandReply))
 				}
@@ -486,6 +489,7 @@ func (kv *ShardKV) migrationAction() {
 // Executes garbage collection (GC) tasks to delete shard data from other groups.
 func (kv *ShardKV) gcAction() {
 	kv.mu.RLock()
+	// Get the group that was previously responsible for these shards and clean up the shards that are no longer responsible.
 	gid2Shards := kv.getShardIDsByStatus(GCing)
 	var wg sync.WaitGroup
 
@@ -535,6 +539,7 @@ func (kv *ShardKV) getShardIDsByStatus(status ShardStatus) map[int][]int {
 	for shardID, shard := range kv.stateMachine {
 		// Filter shards with the given status
 		if shard.Status == status {
+			// Find the last gid responsible for the shard and pull data from that gid
 			gid := kv.lastConfig.Shards[shardID]
 			if gid != 0 {
 				// Group shard IDs by GID
