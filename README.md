@@ -91,6 +91,22 @@ ok      6.5840/kvsrv    75.329s
 - [x] Implement client request handlers (Get, Put, Append)
 - [x] Pass lab test including fault tolerance scenarios
 
+Architecture:
+![image](https://raw.githubusercontent.com/HeZephyr/NewPicGoLibrary/main/img/image-20240811160802518.png?size=small)
+
 [Tutorial](https://blog.csdn.net/hzf0701/article/details/141727735)
 
 ![image-20240820095009785](https://raw.githubusercontent.com/HeZephyr/NewPicGoLibrary/main/img/image-20240820095009785.png)
+## Lab5 Sharded Key/Value Service
+[Experimental Requirements](https://pdos.csail.mit.edu/6.824/labs/lab-shard.html)
+
+- [x] Implement shardctrler and shardkv
+- [x] Pass the lab test and challenge test
+
+Architecture:
+![image-20241020102540500](https://raw.githubusercontent.com/HeZephyr/NewPicGoLibrary/main/img/image-20241020102540500.png)
+
+[Tutorial](https://blog.csdn.net/hzf0701/article/details/143091312?sharetype=blogdetail&sharerId=143091312&sharerefer=PC&sharesource=hzf0701&spm=1011.2480.3001.8118)
+
+![image-20241020125349042](https://raw.githubusercontent.com/HeZephyr/NewPicGoLibrary/main/img/image-20241020125349042.png)
+![image-20241020125315201](https://raw.githubusercontent.com/HeZephyr/NewPicGoLibrary/main/img/image-20241020125315201.png)
