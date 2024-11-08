@@ -30,6 +30,7 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 func (kv *KVServer) Put(args *PutAppendArgs, reply *PutAppendReply) {
 	if args.MessageType == Report {
 		kv.record.Delete(args.MessageID)
+		return
 	}
 	res, ok := kv.record.Load(args.MessageID)
 	if ok {
@@ -48,6 +49,7 @@ func (kv *KVServer) Put(args *PutAppendArgs, reply *PutAppendReply) {
 func (kv *KVServer) Append(args *PutAppendArgs, reply *PutAppendReply) {
 	if args.MessageType == Report {
 		kv.record.Delete(args.MessageID)
+		return
 	}
 	res, ok := kv.record.Load(args.MessageID)
 	if ok {
