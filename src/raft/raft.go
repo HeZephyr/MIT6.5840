@@ -1,12 +1,13 @@
 package raft
 
 import (
-	"6.5840/labgob"
 	"bytes"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"6.5840/labgob"
 
 	//	"6.5840/labgob"
 	"6.5840/labrpc"
@@ -297,15 +298,19 @@ func (rf *Raft) replicateOnceRound(peer int) {
 					} else if reply.Term == rf.currentTerm {
 						// decrease nextIndex and retry
 						rf.nextIndex[peer] = reply.ConflictIndex
-						// TODO: optimize the nextIndex finding, maybe use binary search
 						if reply.ConflictTerm != -1 {
+							// find nextIndex through binary search
 							firstLogIndex := rf.getFirstLog().Index
-							for index := args.PrevLogIndex - 1; index >= firstLogIndex; index-- {
-								if rf.logs[index-firstLogIndex].Term == reply.ConflictTerm {
-									rf.nextIndex[peer] = index
-									break
+							lo, hi := firstLogIndex, args.PrevLogIndex-1
+							for lo < hi {
+								mid := (lo + hi + 1) / 2
+								if rf.logs[mid-firstLogIndex].Term == reply.ConflictTerm {
+									lo = mid
+								} else {
+									hi = mid - 1
 								}
 							}
+							rf.nextIndex[peer] = lo
 						}
 					}
 				} else {
