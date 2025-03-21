@@ -301,16 +301,19 @@ func (rf *Raft) replicateOnceRound(peer int) {
 						if reply.ConflictTerm != -1 {
 							// find nextIndex through binary search
 							firstLogIndex := rf.getFirstLog().Index
+							// find the largest i s.t. term of the log entry with index i is at most reply.ConflictTerm
 							lo, hi := firstLogIndex, args.PrevLogIndex-1
 							for lo < hi {
 								mid := (lo + hi + 1) / 2
-								if rf.logs[mid-firstLogIndex].Term == reply.ConflictTerm {
+								if rf.logs[mid-firstLogIndex].Term <= reply.ConflictTerm {
 									lo = mid
 								} else {
 									hi = mid - 1
 								}
 							}
-							rf.nextIndex[peer] = lo
+							if rf.logs[lo-firstLogIndex].Term == reply.ConflictTerm {
+								rf.nextIndex[peer] = lo
+							}
 						}
 					}
 				} else {
